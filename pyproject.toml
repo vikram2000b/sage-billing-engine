@@ -1,0 +1,21 @@
+[project]
+name = "sage-billing-engine"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "vikram2000b",email = "vikram@sagepilot.ai"}
+]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "uvicorn[standard] (>=0.41.0,<0.42.0)",
+    "pydantic (>=2.12.5,<3.0.0)",
+    "pydantic-settings (>=2.13.0,<3.0.0)",
+    "opentelemetry-sdk (>=1.39.1,<2.0.0)",
+    "opentelemetry-exporter-otlp (>=1.39.1,<2.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
