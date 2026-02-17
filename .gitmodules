@@ -1,0 +1,3 @@
+[submodule "protos/sagepilot"]
+	path = protos/sagepilot
+	url = https://github.com/sage-pilot/protos.git
