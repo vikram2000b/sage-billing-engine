@@ -1,11 +1,12 @@
 """Redis client using redis-py (asyncio) for ElastiCache/Redis compatibility."""
 
 from typing import Optional, Any
+import json
 
 import redis.asyncio as aioredis
 
-from src.core.config import settings
-from src.core.logging import logger, tracer
+from app.core.config import settings
+from app.core.logging import logger, tracer
 
 
 class RedisClient:
@@ -42,7 +43,7 @@ class RedisClient:
                     "socket_timeout": settings.REDIS_SOCKET_TIMEOUT,
                     "socket_connect_timeout": settings.REDIS_SOCKET_CONNECT_TIMEOUT,
                     "max_connections": settings.REDIS_MAX_CONNECTIONS,
-                    "decode_responses": True,  # Automatically decode responses to strings
+                    "decode_responses": True,
                 }
 
                 # Add SSL for cluster mode (ElastiCache Serverless)
@@ -102,15 +103,46 @@ class RedisClient:
             return False
 
     async def set_if_not_exists(self, key: str, value: Any, ttl_seconds: int) -> bool:
-        """
-        Atomically set a key with TTL only if it does not exist.
-
-        Returns:
-            True if the key was set (first time), False if it already existed.
-        """
+        """Atomically set a key with TTL only if it does not exist."""
         await self.ensure_connected()
         res = await self.client.set(name=key, value=value, nx=True, ex=int(ttl_seconds))
         return bool(res)
+
+    # ── Billing-specific cache helpers ──
+
+    async def get_cached_json(self, key: str) -> Optional[dict]:
+        """Get a JSON-serialized cached value."""
+        await self.ensure_connected()
+        raw = await self.client.get(key)
+        if raw is None:
+            return None
+        return json.loads(raw)
+
+    async def set_cached_json(self, key: str, value: dict, ttl_seconds: int) -> None:
+        """Set a JSON-serialized cached value with TTL."""
+        await self.ensure_connected()
+        await self.client.setex(key, ttl_seconds, json.dumps(value))
+
+    async def delete_cached(self, key: str) -> None:
+        """Delete a cached key."""
+        await self.ensure_connected()
+        await self.client.delete(key)
+
+    async def increment_float(self, key: str, amount: float) -> float:
+        """Increment a float counter (for real-time usage tracking)."""
+        await self.ensure_connected()
+        return await self.client.incrbyfloat(key, amount)
+
+    async def get_float(self, key: str) -> float:
+        """Get a float counter value."""
+        await self.ensure_connected()
+        val = await self.client.get(key)
+        return float(val) if val else 0.0
+
+    async def set_with_ttl(self, key: str, value: str, ttl_seconds: int) -> None:
+        """Set a string value with TTL."""
+        await self.ensure_connected()
+        await self.client.setex(key, ttl_seconds, value)
 
 
 # Global Redis client instance

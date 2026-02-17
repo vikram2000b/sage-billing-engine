@@ -1,8 +1,6 @@
 # app/core/logging.py
 import logging
 import sys
-from logging.handlers import RotatingFileHandler
-from pathlib import Path
 from .config import settings
 
 from opentelemetry import trace
@@ -20,11 +18,13 @@ from opentelemetry.sdk.trace.export import (
     ConsoleSpanExporter,
 )
 
+SERVICE_NAME = "sage-billing-engine"
+
 # Check if OpenTelemetry tracing is enabled
 otel_enabled = settings.ENABLE_OTEL_TRACING.lower() == "true"
 
 # Configure application logger
-logger = logging.getLogger("feed-journey-engine")
+logger = logging.getLogger(SERVICE_NAME)
 logger.setLevel(getattr(logging, settings.LOG_LEVEL.upper()))
 logger.propagate = False
 
@@ -32,7 +32,7 @@ if otel_enabled:
     # OpenTelemetry is enabled - send logs and traces to Signoz
     resource = Resource.create(
         {
-            "service.name": "feed-journey-engine",
+            "service.name": SERVICE_NAME,
             "deployment.environment": settings.OTEL_SERVICE_ENVIRONMENT,
         }
     )
@@ -81,6 +81,6 @@ logging.getLogger("boto3").setLevel(logging.WARNING)
 logging.getLogger("botocore").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("opentelemetry").setLevel(logging.WARNING)
-logging.getLogger("temporalio").setLevel(logging.INFO)
+logging.getLogger("stripe").setLevel(logging.WARNING)
 
-tracer = trace.get_tracer("feed-journey-engine")
+tracer = trace.get_tracer(SERVICE_NAME)
