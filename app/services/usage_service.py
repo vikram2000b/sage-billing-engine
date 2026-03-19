@@ -14,7 +14,7 @@ from app.core.config import settings
 from app.core.logging import logger, tracer
 from app.clients.stripe_client import stripe_client
 from app.clients.sqs_client import sqs_client
-from app.services.entitlement_service import increment_usage_counter
+from app.services.billing_usage_service import record_usage
 from app.models.enums import UsageEventType
 from app.models.schemas import (
     UsageEventRequest,
@@ -32,7 +32,7 @@ EVENT_TYPE_TO_METER: dict[UsageEventType, str] = {
 
 
 async def record_usage_event(event: UsageEventRequest) -> dict[str, Any]:
-    """Record a usage event: push to Stripe + update Redis counter.
+    """Record a usage event through the billing-owned allocation service.
 
     This is the synchronous path — called directly by the API when
     the caller needs immediate confirmation. For high-throughput
@@ -43,41 +43,24 @@ async def record_usage_event(event: UsageEventRequest) -> dict[str, Any]:
         "event_type": event.event_type.value,
         "value": event.value,
     }):
-        # Resolve Stripe customer
-        customer = await stripe_client.get_customer_by_workspace(event.workspace_id)
-        if not customer:
-            raise ValueError(f"No Stripe customer found for workspace {event.workspace_id}")
-
-        # Push to Stripe Meter
-        meter_name = EVENT_TYPE_TO_METER.get(event.event_type)
-        if not meter_name:
-            raise ValueError(f"Unknown event type: {event.event_type}")
-
-        ts = int(event.timestamp.timestamp()) if event.timestamp else None
-
-        meter_event = await stripe_client.create_meter_event(
-            event_name=meter_name,
-            stripe_customer_id=customer.id,
-            value=event.value,
-            timestamp=ts,
+        decision = await record_usage(
+            {
+                "version": "v1",
+                "source_service": "billing-http",
+                "workspace_id": event.workspace_id,
+                "event_type": event.event_type.value,
+                "value": event.value,
+                "idempotency_key": event.idempotency_key,
+                "occurred_at": event.timestamp,
+                "metadata": event.metadata,
+            }
         )
-
-        # Update Redis real-time counter
-        new_total = await increment_usage_counter(
-            workspace_id=event.workspace_id,
-            meter=event.event_type.value,
-            value=event.value,
-        )
-
-        logger.info(
-            f"Recorded usage: {event.event_type.value}={event.value} "
-            f"for workspace {event.workspace_id} (total: {new_total})"
-        )
-
         return {
-            "status": "recorded",
-            "meter_event_id": getattr(meter_event, "identifier", None),
-            "current_total": new_total,
+            "status": "recorded" if decision.allowed else "blocked",
+            "mode": decision.mode,
+            "prepaid_value": decision.prepaid_value,
+            "overage_value": decision.overage_value,
+            "meter_event_id": decision.stripe_meter_event_id or None,
         }
 
 

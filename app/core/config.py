@@ -12,7 +12,6 @@ class Settings(BaseSettings):
     # Service metadata
     PROJECT_NAME: str = "Sage Billing Engine"
     VERSION: str = "0.1.0"
-    BACKEND_CORS_ORIGINS: list[str] = ["*"]
 
     # AWS Configuration
     AWS_REGION: str = Field(default="ap-south-1")
@@ -33,6 +32,8 @@ class Settings(BaseSettings):
     # Database Access gRPC Service
     DATABASE_ACCESS_GRPC_HOST: str = Field(default="localhost")
     DATABASE_ACCESS_GRPC_PORT: int = Field(default=50051)
+    BILLING_GRPC_HOST: str = Field(default="0.0.0.0")
+    BILLING_GRPC_PORT: int = Field(default=50061)
 
     BASE_URL: str = Field(default="https://app.sagepilot.ai")
 
@@ -65,6 +66,7 @@ class Settings(BaseSettings):
     # Entitlement cache TTLs (seconds)
     ENTITLEMENT_CACHE_TTL: int = Field(default=120)
     USAGE_CACHE_TTL: int = Field(default=300)
+    USAGE_EVENT_IDEMPOTENCY_TTL_SECONDS: int = Field(default=604800)
 
     class Config:
         case_sensitive = True

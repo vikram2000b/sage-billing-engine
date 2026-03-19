@@ -105,40 +105,17 @@ class Database:
 
 # Usage examples:
 """
-# In FastAPI startup:
-@app.on_event("startup")
-async def startup():
-    await Database.connect()
+# During service startup:
+await Database.connect()
 
-@app.on_event("shutdown")
-async def shutdown():
-    await Database.close()
+# In a service method:
+users = await Database.execute_query("SELECT * FROM users", use_replica=True)
 
-# In your routes:
-@app.get("/users")
-async def get_users():
-    # SELECT query (fetch=True by default, use_replica=True to route to replicas)
-    users = await Database.execute_query("SELECT * FROM users", use_replica=True)
-    return users
-
-@app.post("/users")
-async def create_user(user: UserCreate):
-    # INSERT query (fetch=False since we don't need results)
-    await Database.execute_query(
-        "INSERT INTO users (name, email) VALUES ($1, $2)",
-        user.name,
-        user.email,
-        fetch=False
-    )
-    return {"message": "User created"}
-
-@app.get("/user/{user_id}")
-async def get_user(user_id: int):
-    # SELECT query for single user (use_replica=True for read queries)
-    users = await Database.execute_query(
-        "SELECT * FROM users WHERE id = $1",
-        user_id,
-        use_replica=True
-    )
-    return users[0] if users else None
+# For writes:
+await Database.execute_query(
+    "INSERT INTO users (name, email) VALUES ($1, $2)",
+    "Jane",
+    "jane@example.com",
+    fetch=False,
+)
 """
