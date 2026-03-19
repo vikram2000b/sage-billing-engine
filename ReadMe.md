@@ -2,7 +2,7 @@
 
 Centralized billing service for the Sage platform. Handles Stripe subscriptions, usage-based metering, entitlement checks, multi-gateway payment collection (Stripe, Razorpay, manual bank transfers), and event-driven reconciliation.
 
-**Architecture**: FastAPI server + SQS consumers running in a single process.
+**Architecture**: gRPC server + SQS consumers running in a single process.
 
 ## Architecture Overview
 
@@ -11,15 +11,13 @@ Centralized billing service for the Sage platform. Handles Stripe subscriptions,
 │                       Sage Billing Engine                           │
 │                                                                     │
 │  ┌──────────────────────────┐   ┌────────────────────────────────┐  │
-│  │     FastAPI Server       │   │       SQS Consumers            │  │
+│  │      gRPC Server         │   │       SQS Consumers            │  │
 │  │                          │   │                                │  │
-│  │  /api/v1/entitlements    │   │  usage-events   → Stripe Meter │  │
-│  │  /api/v1/subscriptions   │   │  stripe-events  → Cache Sync  │  │
-│  │  /api/v1/usage           │   │  payment-events → Reconcile   │  │
-│  │  /api/v1/checkout        │   │                                │  │
-│  │  /api/v1/plans           │   └────────────────────────────────┘  │
-│  │  /api/v1/webhooks        │                                       │
-│  └──────────────────────────┘                                       │
+│  │  BillingService          │   │  usage-events   → Stripe Meter │  │
+│  │  entitlement checks      │   │  stripe-events  → Projection   │  │
+│  │  plan/invoice/session    │   │  payment-events → Reconcile    │  │
+│  │  usage authorization     │   │                                │  │
+│  └──────────────────────────┘   └────────────────────────────────┘  │
 └──────────┬──────────────────────────────┬───────────────────────────┘
            │                              │
      ┌─────▼─────┐                 ┌──────▼──────┐
@@ -41,15 +39,10 @@ Centralized billing service for the Sage platform. Handles Stripe subscriptions,
 ```
 sage-billing-engine/
 ├── app/
-│   ├── main.py                  # FastAPI app + SQS consumer startup (lifespan)
-│   ├── api/                     # FastAPI route handlers
-│   │   ├── __init__.py          # Router aggregation (all routes under /api/v1)
-│   │   ├── entitlements.py      # Feature access & usage limit checks
-│   │   ├── subscriptions.py     # Subscription CRUD, plan changes, pause/resume
-│   │   ├── usage.py             # Usage event recording (sync & async)
-│   │   ├── checkout.py          # Checkout sessions, invoices, reconciliation
-│   │   ├── plans.py             # Product catalog from Stripe
-│   │   └── webhooks.py          # Stripe & Razorpay webhook receivers
+│   ├── main.py                  # gRPC service entry point
+│   ├── grpc/                    # Billing gRPC server + servicers
+│   │   ├── server.py            # gRPC bootstrap + SQS consumer lifecycle
+│   │   └── billing_servicer.py  # BillingService implementation
 │   ├── services/                # Business logic layer
 │   │   ├── entitlement_service.py
 │   │   ├── subscription_service.py
@@ -78,72 +71,25 @@ sage-billing-engine/
 └── poetry.lock
 ```
 
-## API Reference
+## gRPC Surface
 
-All routes are prefixed with `/api/v1`.
+The service exposes a single internal `sagepilot.billing.BillingService` over gRPC.
 
-### Entitlements
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/entitlements/{workspace_id}` | Full entitlements (plan, features, usage, limits) |
-| `GET` | `/entitlements/{workspace_id}/feature/{feature}` | Check access to a specific feature |
-| `GET` | `/entitlements/{workspace_id}/usage/{meter}/exceeded` | Check if usage limit is exceeded |
-| `POST` | `/entitlements/{workspace_id}/invalidate` | Force-invalidate the entitlement cache |
-
-### Subscriptions
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/subscriptions/{workspace_id}` | Get current subscription |
-| `POST` | `/subscriptions/` | Create a new subscription |
-| `POST` | `/subscriptions/cancel` | Cancel a subscription |
-| `POST` | `/subscriptions/{workspace_id}/change-plan` | Upgrade or downgrade plan |
-| `POST` | `/subscriptions/{workspace_id}/pause` | Pause a subscription |
-| `POST` | `/subscriptions/{workspace_id}/resume` | Resume a paused subscription |
-| `POST` | `/subscriptions/{workspace_id}/revoke-cancellation` | Revoke a pending cancellation |
-
-### Usage
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/usage/events` | Record a usage event synchronously (Stripe Meter + Redis) |
-| `POST` | `/usage/events/async` | Publish a usage event to SQS for async processing |
-| `GET` | `/usage/{workspace_id}` | Get usage report for a billing period |
-
-### Checkout & Invoices
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/checkout/session` | Create a Stripe Checkout session |
-| `POST` | `/checkout/razorpay` | Create a Razorpay order for a Stripe invoice |
-| `GET` | `/checkout/invoices/{workspace_id}` | List invoices for a workspace |
-| `GET` | `/checkout/invoices/detail/{invoice_id}` | Get invoice details |
-| `POST` | `/checkout/invoices/{invoice_id}/send` | Send an invoice via email/WhatsApp |
-| `POST` | `/checkout/reconcile` | Manually reconcile a bank transfer against a Stripe invoice |
-
-### Plans
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/plans/` | List all available plans from Stripe (cached 10 min) |
-
-### Webhooks
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/webhooks/stripe` | Stripe webhook receiver (signature-verified) |
-| `POST` | `/webhooks/razorpay` | Razorpay webhook receiver |
-
-### Health
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/health` | Service health check (includes Redis status) |
+| Method | Description |
+|--------|-------------|
+| `GetBillingSummary` | Workspace billing snapshot for platform settings and guards |
+| `GetPlans` | Product and price catalog |
+| `GetInvoices` | Invoice history |
+| `CreatePortalSession` | Stripe customer portal session |
+| `CreateCustomerSession` | Stripe pricing table customer session |
+| `CheckEntitlement` | Feature gate lookup |
+| `CheckUsageEligibility` | Quota / overage decision without mutation |
+| `AuthorizeUsage` | Allocation decision for a usage event |
+| `RecordUsageSync` | Low-volume synchronous usage recording fallback |
 
 ## SQS Consumers
 
-Three SQS consumers run as background `asyncio` tasks alongside the FastAPI server:
+Three SQS consumers run as background `asyncio` tasks alongside the gRPC server:
 
 | Queue | Handler | Purpose |
 |-------|---------|---------|
@@ -240,60 +186,35 @@ ENABLE_OTEL_TRACING=false
 ### Running
 
 ```bash
-# Development (with hot reload)
-poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
-# Production
-poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+poetry run python -m app.main
 ```
 
-> **Note**: Use `--workers 1` in production. SQS consumers run as `asyncio` background tasks within the FastAPI process, so multiple workers would spawn duplicate consumers.
-
-API docs are available at `http://localhost:8000/docs` (Swagger UI) and `http://localhost:8000/redoc` (ReDoc).
+The process starts:
+- the internal gRPC server on `BILLING_GRPC_HOST:BILLING_GRPC_PORT`
+- Redis and database clients
+- any configured SQS consumers
 
 ## Integration Guide
 
 ### Checking Entitlements (from other services)
 
 ```python
-# Quick feature gate
-response = await httpx.get(
-    "http://billing-engine:8000/api/v1/entitlements/{workspace_id}/feature/whatsapp_campaigns"
-)
-has_access = response.json()["has_access"]
-
-# Full entitlements (plan, features, usage, limits)
-response = await httpx.get(
-    "http://billing-engine:8000/api/v1/entitlements/{workspace_id}"
-)
-entitlements = response.json()
+# Use the internal BillingService gRPC client from platform-api or another trusted service.
+# The proto lives under protos/sagepilot/billing/billing.proto.
 ```
 
 ### Publishing Usage Events (from other services)
 
 ```python
-# Async (preferred for high-throughput — AI messages, WhatsApp, email)
-await httpx.post("http://billing-engine:8000/api/v1/usage/events/async", json={
-    "event_type": "ai_credits",
-    "workspace_id": "ws_abc123",
-    "value": 2.5,
-    "idempotency_key": "msg_xyz789",
-})
-
-# Sync (immediate Stripe push — for low-volume or critical events)
-await httpx.post("http://billing-engine:8000/api/v1/usage/events", json={
-    "event_type": "whatsapp_message",
-    "workspace_id": "ws_abc123",
-    "value": 1,
-    "idempotency_key": "wa_msg_456",
-})
+# Preferred: publish the usage event to the billing usage SQS queue.
+# Fallback: call RecordUsageSync over gRPC for low-volume synchronous flows.
 ```
 
 ## Tech Stack
 
 | Component | Technology |
 |-----------|-----------|
-| Framework | FastAPI |
+| Runtime | gRPC (grpc.aio) |
 | Billing | Stripe (subscriptions, meters, invoices) |
 | Indian Payments | Razorpay |
 | Queue | AWS SQS |

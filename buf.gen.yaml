@@ -3,7 +3,7 @@ version: v2
 inputs:
   - directory: protos
 plugins:
-  - remote: buf.build/protocolbuffers/python
+  - remote: buf.build/protocolbuffers/python:v33.0
     out: .
-  - remote: buf.build/grpc/python
+  - remote: buf.build/grpc/python:v1.76.0
     out: .
