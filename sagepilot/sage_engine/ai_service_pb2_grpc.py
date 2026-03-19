@@ -73,6 +73,11 @@ class AIServiceStub(object):
                 request_serializer=sagepilot_dot_sage__engine_dot_ai__service__pb2.ClearHistoryRequest.SerializeToString,
                 response_deserializer=sagepilot_dot_sage__engine_dot_ai__service__pb2.ClearHistoryResponse.FromString,
                 _registered_method=True)
+        self.RunPostCallWork = channel.unary_unary(
+                '/sagepilot.sage_engine.AIService/RunPostCallWork',
+                request_serializer=sagepilot_dot_sage__engine_dot_ai__service__pb2.PostCallWorkRequest.SerializeToString,
+                response_deserializer=sagepilot_dot_sage__engine_dot_ai__service__pb2.PostCallWorkResponse.FromString,
+                _registered_method=True)
 
 
 class AIServiceServicer(object):
@@ -152,6 +157,13 @@ class AIServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def RunPostCallWork(self, request, context):
+        """Post-call work (AI-only)
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AIServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -209,6 +221,11 @@ def add_AIServiceServicer_to_server(servicer, server):
                     servicer.ClearHistory,
                     request_deserializer=sagepilot_dot_sage__engine_dot_ai__service__pb2.ClearHistoryRequest.FromString,
                     response_serializer=sagepilot_dot_sage__engine_dot_ai__service__pb2.ClearHistoryResponse.SerializeToString,
+            ),
+            'RunPostCallWork': grpc.unary_unary_rpc_method_handler(
+                    servicer.RunPostCallWork,
+                    request_deserializer=sagepilot_dot_sage__engine_dot_ai__service__pb2.PostCallWorkRequest.FromString,
+                    response_serializer=sagepilot_dot_sage__engine_dot_ai__service__pb2.PostCallWorkResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -512,6 +529,33 @@ class AIService(object):
             '/sagepilot.sage_engine.AIService/ClearHistory',
             sagepilot_dot_sage__engine_dot_ai__service__pb2.ClearHistoryRequest.SerializeToString,
             sagepilot_dot_sage__engine_dot_ai__service__pb2.ClearHistoryResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RunPostCallWork(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/sagepilot.sage_engine.AIService/RunPostCallWork',
+            sagepilot_dot_sage__engine_dot_ai__service__pb2.PostCallWorkRequest.SerializeToString,
+            sagepilot_dot_sage__engine_dot_ai__service__pb2.PostCallWorkResponse.FromString,
             options,
             channel_credentials,
             insecure,
