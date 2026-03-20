@@ -114,6 +114,7 @@ class BillingRepository:
         )
 
     async def upsert_subscription_projection(self, payload: dict[str, Any]) -> None:
+        metadata_json = json.dumps(payload.get("metadata") or {}, default=str)
         await Database.execute_query(
             """
             INSERT INTO stripe_subscriptions (
@@ -172,7 +173,7 @@ class BillingRepository:
             payload.get("cancel_at"),
             payload.get("canceled_at"),
             payload.get("trial_end"),
-            payload.get("metadata", {}),
+            metadata_json,
             fetch=False,
         )
 

@@ -208,9 +208,9 @@ async def _handle_subscription_deleted(subscription: dict[str, Any]) -> None:
 
 
 async def _handle_invoice_paid(invoice: dict[str, Any]) -> None:
-    subscription_id = _extract_id(invoice.get("subscription"))
+    subscription_id = _extract_invoice_subscription_id(invoice)
     if not subscription_id:
-        logger.info("Ignoring non-subscription invoice.paid", extra={"invoice_id": invoice.get("id")})
+        logger.info("Ignoring non-subscription invoice.paid invoice_id=%s", invoice.get("id"))
         return
 
     subscription = await stripe_client.get_subscription(
@@ -219,7 +219,11 @@ async def _handle_invoice_paid(invoice: dict[str, Any]) -> None:
     )
     workspace_id = await _resolve_workspace_id_for_subscription(subscription)
     if not workspace_id:
-        logger.warning("No workspace mapping for invoice.paid", extra={"invoice_id": invoice.get("id"), "subscription_id": subscription_id})
+        logger.warning(
+            "No workspace mapping for invoice.paid invoice_id=%s subscription_id=%s",
+            invoice.get("id"),
+            subscription_id,
+        )
         return
 
     await _project_subscription(
@@ -233,7 +237,7 @@ async def _handle_invoice_paid(invoice: dict[str, Any]) -> None:
 
 
 async def _handle_invoice_payment_failed(invoice: dict[str, Any]) -> None:
-    subscription_id = _extract_id(invoice.get("subscription"))
+    subscription_id = _extract_invoice_subscription_id(invoice)
     if not subscription_id:
         return
 
@@ -254,6 +258,11 @@ async def _project_subscription(
     create_quota_if_missing: bool,
     force_active_status: bool = False,
 ) -> None:
+    subscription = await _hydrate_subscription_for_projection(
+        subscription,
+        include_product_metadata=create_quota_if_missing,
+    )
+
     customer_id = _extract_id(subscription.get("customer"))
     if customer_id:
         await billing_repository.upsert_customer_mapping(
@@ -301,6 +310,40 @@ async def _project_subscription(
                 await billing_repository.create_quota(quota)
 
 
+async def _hydrate_subscription_for_projection(
+    subscription: dict[str, Any],
+    *,
+    include_product_metadata: bool,
+) -> dict[str, Any]:
+    items = (subscription.get("items") or {}).get("data", [])
+    if not items or not include_product_metadata:
+        return subscription
+
+    needs_hydration = any(
+        isinstance(((item.get("price") or {}).get("product")), str)
+        for item in items
+    )
+    if not needs_hydration:
+        return subscription
+
+    subscription_id = _extract_id(subscription.get("id"))
+    if not subscription_id:
+        return subscription
+
+    try:
+        return await stripe_client.get_subscription(
+            subscription_id,
+            expand=["items.data.price.product", "customer"],
+        )
+    except Exception as exc:
+        logger.warning(
+            "Failed to hydrate Stripe subscription %s for quota projection: %s",
+            subscription_id,
+            exc,
+        )
+        return subscription
+
+
 async def _resolve_workspace_id_for_subscription(subscription: dict[str, Any]) -> str | None:
     metadata = subscription.get("metadata") or {}
     workspace_id = metadata.get("workspace_id")
@@ -327,6 +370,8 @@ def _quota_from_subscription_item(
 ) -> dict[str, Any] | None:
     price = item.get("price") or {}
     product = price.get("product") or {}
+    if not isinstance(product, dict):
+        return None
     metadata = product.get("metadata") or {}
 
     total_credits = 0
@@ -407,6 +452,26 @@ def _extract_id(value: Any) -> str | None:
     if isinstance(value, dict):
         return value.get("id")
     return getattr(value, "id", None)
+
+
+def _extract_invoice_subscription_id(invoice: dict[str, Any]) -> str | None:
+    subscription_id = _extract_id(invoice.get("subscription"))
+    if subscription_id:
+        return subscription_id
+
+    parent = invoice.get("parent") or {}
+    subscription_details = parent.get("subscription_details") or {}
+    subscription_id = _extract_id(subscription_details.get("subscription"))
+    if subscription_id:
+        return subscription_id
+
+    for line in (invoice.get("lines") or {}).get("data", []):
+        details = (line.get("parent") or {}).get("subscription_item_details") or {}
+        subscription_id = _extract_id(details.get("subscription"))
+        if subscription_id:
+            return subscription_id
+
+    return None
 
 
 def _from_unix(value: Any) -> datetime | None:
