@@ -10,6 +10,10 @@ if [ -n "$PID" ]; then
     sleep 1
 fi
 
+set -a
+source .env
+set +a
+
 # Start the server
 echo "Starting sage-billing-engine on port $PORT..."
 poetry run python -m app.main

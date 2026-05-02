@@ -71,6 +71,9 @@ async def publish_usage_event(event: UsageEventRequest) -> str:
     The SQS consumer will call record_usage_event.
     """
     with tracer.start_as_current_span("usage.publish"):
+        if not settings.SQS_USAGE_EVENTS_QUEUE_URL:
+            raise RuntimeError("SQS_USAGE_EVENTS_QUEUE_URL is not configured")
+
         sqs_message = SQSUsageEvent(
             event_type=event.event_type,
             workspace_id=event.workspace_id,

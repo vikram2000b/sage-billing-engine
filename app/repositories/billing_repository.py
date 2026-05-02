@@ -301,6 +301,19 @@ class BillingRepository:
             fetch=False,
         )
 
+    async def expire_workspace_free_quotas(self, workspace_id: str) -> None:
+        await Database.execute_query(
+            """
+            UPDATE workspace_quotas
+            SET status = 'expired', updated_at = NOW()
+            WHERE workspace_id = $1
+              AND subscription_id LIKE 'free_%'
+              AND status IN ('active', 'trialing', 'past_due')
+            """,
+            workspace_id,
+            fetch=False,
+        )
+
     async def update_quota_status(self, subscription_id: str, status: str) -> None:
         await Database.execute_query(
             """

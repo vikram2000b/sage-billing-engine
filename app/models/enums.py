@@ -39,21 +39,6 @@ class PaymentGateway(str, Enum):
     ZOHO_BOOKS = "zoho_books"
 
 
-class InvoiceStatus(str, Enum):
-    """Stripe invoice statuses."""
-    DRAFT = "draft"
-    OPEN = "open"
-    PAID = "paid"
-    VOID = "void"
-    UNCOLLECTIBLE = "uncollectible"
-
-
-class PaymentCollectionMethod(str, Enum):
-    """How payments are collected for a subscription."""
-    CHARGE_AUTOMATICALLY = "charge_automatically"
-    SEND_INVOICE = "send_invoice"
-
-
 class UsageEventStatus(str, Enum):
     """Status of a usage event in the pipeline."""
     PENDING = "pending"

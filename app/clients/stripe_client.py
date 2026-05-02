@@ -21,44 +21,6 @@ class StripeClient:
         return await asyncio.to_thread(fn, *args, **kwargs)
 
     @staticmethod
-    async def get_or_create_customer(
-        workspace_id: str,
-        email: str,
-        name: Optional[str] = None,
-        metadata: Optional[dict] = None,
-    ) -> stripe.Customer:
-        with tracer.start_as_current_span(
-            "stripe.get_or_create_customer",
-            attributes={"workspace_id": workspace_id},
-        ):
-            existing = await StripeClient._call(
-                stripe.Customer.search,
-                query=f"metadata['workspace_id']:'{workspace_id}'",
-            )
-            if existing.data:
-                logger.info(
-                    "Found existing Stripe customer for workspace %s",
-                    workspace_id,
-                )
-                return existing.data[0]
-
-            customer = await StripeClient._call(
-                stripe.Customer.create,
-                email=email,
-                name=name,
-                metadata={
-                    "workspace_id": workspace_id,
-                    **(metadata or {}),
-                },
-            )
-            logger.info(
-                "Created Stripe customer %s for workspace %s",
-                customer.id,
-                workspace_id,
-            )
-            return customer
-
-    @staticmethod
     async def get_customer_by_workspace(workspace_id: str) -> Optional[stripe.Customer]:
         with tracer.start_as_current_span("stripe.get_customer_by_workspace"):
             result = await StripeClient._call(
@@ -66,37 +28,6 @@ class StripeClient:
                 query=f"metadata['workspace_id']:'{workspace_id}'",
             )
             return result.data[0] if result.data else None
-
-    @staticmethod
-    async def create_subscription(
-        customer_id: str,
-        price_id: str,
-        collection_method: str = "charge_automatically",
-        trial_days: Optional[int] = None,
-        metadata: Optional[dict] = None,
-        preferred_gateway: str = "stripe",
-    ) -> stripe.Subscription:
-        with tracer.start_as_current_span(
-            "stripe.create_subscription",
-            attributes={"customer_id": customer_id, "price_id": price_id},
-        ):
-            params: dict[str, Any] = {
-                "customer": customer_id,
-                "items": [{"price": price_id}],
-                "collection_method": collection_method,
-                "metadata": metadata or {},
-            }
-
-            if collection_method == "send_invoice":
-                params["days_until_due"] = 30
-                params["metadata"]["preferred_gateway"] = preferred_gateway
-
-            if trial_days:
-                params["trial_period_days"] = trial_days
-
-            sub = await StripeClient._call(stripe.Subscription.create, **params)
-            logger.info("Created subscription %s for customer %s", sub.id, customer_id)
-            return sub
 
     @staticmethod
     async def get_subscription(
@@ -129,89 +60,6 @@ class StripeClient:
                 if subs.data:
                     return subs.data[0]
             return None
-
-    @staticmethod
-    async def cancel_subscription(
-        subscription_id: str,
-        cancel_immediately: bool = False,
-    ) -> stripe.Subscription:
-        with tracer.start_as_current_span("stripe.cancel_subscription"):
-            if cancel_immediately:
-                sub = await StripeClient._call(
-                    stripe.Subscription.cancel,
-                    subscription_id,
-                )
-            else:
-                sub = await StripeClient._call(
-                    stripe.Subscription.modify,
-                    subscription_id,
-                    cancel_at_period_end=True,
-                )
-            logger.info(
-                "Canceled subscription %s (immediate=%s)",
-                subscription_id,
-                cancel_immediately,
-            )
-            return sub
-
-    @staticmethod
-    async def revoke_cancellation(subscription_id: str) -> stripe.Subscription:
-        with tracer.start_as_current_span("stripe.revoke_cancellation"):
-            sub = await StripeClient._call(
-                stripe.Subscription.modify,
-                subscription_id,
-                cancel_at_period_end=False,
-            )
-            logger.info("Revoked cancellation for subscription %s", subscription_id)
-            return sub
-
-    @staticmethod
-    async def change_subscription_plan(
-        subscription_id: str,
-        new_price_id: str,
-        proration_behavior: str = "create_prorations",
-    ) -> stripe.Subscription:
-        with tracer.start_as_current_span("stripe.change_plan"):
-            sub = await StripeClient._call(stripe.Subscription.retrieve, subscription_id)
-            updated = await StripeClient._call(
-                stripe.Subscription.modify,
-                subscription_id,
-                items=[
-                    {
-                        "id": sub["items"]["data"][0]["id"],
-                        "price": new_price_id,
-                    }
-                ],
-                proration_behavior=proration_behavior,
-            )
-            logger.info(
-                "Changed subscription %s to price %s",
-                subscription_id,
-                new_price_id,
-            )
-            return updated
-
-    @staticmethod
-    async def pause_subscription(subscription_id: str) -> stripe.Subscription:
-        with tracer.start_as_current_span("stripe.pause_subscription"):
-            sub = await StripeClient._call(
-                stripe.Subscription.modify,
-                subscription_id,
-                pause_collection={"behavior": "void"},
-            )
-            logger.info("Paused subscription %s", subscription_id)
-            return sub
-
-    @staticmethod
-    async def resume_subscription(subscription_id: str) -> stripe.Subscription:
-        with tracer.start_as_current_span("stripe.resume_subscription"):
-            sub = await StripeClient._call(
-                stripe.Subscription.modify,
-                subscription_id,
-                pause_collection="",
-            )
-            logger.info("Resumed subscription %s", subscription_id)
-            return sub
 
     @staticmethod
     async def create_meter_event(
@@ -262,11 +110,6 @@ class StripeClient:
             )
 
     @staticmethod
-    async def get_invoice(invoice_id: str) -> stripe.Invoice:
-        with tracer.start_as_current_span("stripe.get_invoice"):
-            return await StripeClient._call(stripe.Invoice.retrieve, invoice_id)
-
-    @staticmethod
     async def list_invoices(
         customer_id: str,
         status: Optional[str] = None,
@@ -280,13 +123,6 @@ class StripeClient:
             return invoices.data
 
     @staticmethod
-    async def send_invoice(invoice_id: str) -> stripe.Invoice:
-        with tracer.start_as_current_span("stripe.send_invoice"):
-            invoice = await StripeClient._call(stripe.Invoice.send_invoice, invoice_id)
-            logger.info("Sent invoice %s", invoice_id)
-            return invoice
-
-    @staticmethod
     async def mark_invoice_paid_out_of_band(invoice_id: str) -> stripe.Invoice:
         with tracer.start_as_current_span("stripe.mark_paid_out_of_band"):
             invoice = await StripeClient._call(
@@ -296,52 +132,6 @@ class StripeClient:
             )
             logger.info("Marked invoice %s as paid out of band", invoice_id)
             return invoice
-
-    @staticmethod
-    async def void_invoice(invoice_id: str) -> stripe.Invoice:
-        with tracer.start_as_current_span("stripe.void_invoice"):
-            invoice = await StripeClient._call(stripe.Invoice.void_invoice, invoice_id)
-            logger.info("Voided invoice %s", invoice_id)
-            return invoice
-
-    @staticmethod
-    async def list_overdue_invoices() -> list[stripe.Invoice]:
-        import time
-
-        with tracer.start_as_current_span("stripe.list_overdue_invoices"):
-            invoices = await StripeClient._call(
-                stripe.Invoice.list,
-                status="open",
-                due_date={"lt": int(time.time())},
-            )
-            return invoices.data
-
-    @staticmethod
-    async def create_checkout_session(
-        customer_id: str,
-        price_id: str,
-        success_url: str,
-        cancel_url: str,
-        mode: str = "subscription",
-        metadata: Optional[dict] = None,
-        line_items: Optional[list[dict[str, Any]]] = None,
-    ) -> stripe.checkout.Session:
-        with tracer.start_as_current_span("stripe.create_checkout"):
-            session = await StripeClient._call(
-                stripe.checkout.Session.create,
-                customer=customer_id,
-                line_items=line_items or [{"price": price_id, "quantity": 1}],
-                mode=mode,
-                success_url=success_url,
-                cancel_url=cancel_url,
-                metadata=metadata or {},
-            )
-            logger.info(
-                "Created checkout session %s for customer %s",
-                session.id,
-                customer_id,
-            )
-            return session
 
     @staticmethod
     async def list_checkout_session_line_items(

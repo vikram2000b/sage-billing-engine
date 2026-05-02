@@ -1,4 +1,5 @@
 # app/core/logging.py
+import json
 import logging
 import sys
 from .config import settings
@@ -22,6 +23,25 @@ SERVICE_NAME = "sage-billing-engine"
 
 # Check if OpenTelemetry tracing is enabled
 otel_enabled = settings.ENABLE_OTEL_TRACING.lower() == "true"
+
+
+class JsonLogFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+        return json.dumps(payload, default=str)
+
+
+def build_formatter(log_format: str) -> logging.Formatter:
+    if log_format.lower() == "json":
+        return JsonLogFormatter()
+    return logging.Formatter(log_format)
 
 # Configure application logger
 logger = logging.getLogger(SERVICE_NAME)
@@ -68,7 +88,7 @@ else:
     # OpenTelemetry is disabled - use console logging only
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(getattr(logging, settings.LOG_LEVEL.upper()))
-    console_formatter = logging.Formatter(settings.LOG_FORMAT)
+    console_formatter = build_formatter(settings.LOG_FORMAT)
     console_handler.setFormatter(console_formatter)
     logger.addHandler(console_handler)
 

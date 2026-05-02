@@ -9,8 +9,6 @@ from app.models.enums import (
     SubscriptionStatus,
     UsageEventType,
     PaymentGateway,
-    InvoiceStatus,
-    PaymentCollectionMethod,
 )
 
 
@@ -39,61 +37,6 @@ class UsageSummary(BaseModel):
     percentage: Optional[float] = None
 
 
-class FeatureCheckResponse(BaseModel):
-    """Response for a single feature access check."""
-    workspace_id: str
-    feature: str
-    has_access: bool
-    reason: Optional[str] = None
-
-
-# ─── Subscription Schemas ───
-
-
-class SubscriptionResponse(BaseModel):
-    """Subscription details response."""
-    subscription_id: str
-    workspace_id: str
-    stripe_customer_id: str
-    plan_tier: PlanTier
-    status: SubscriptionStatus
-    collection_method: PaymentCollectionMethod
-    preferred_gateway: PaymentGateway = PaymentGateway.STRIPE
-    current_period_start: datetime
-    current_period_end: datetime
-    cancel_at_period_end: bool = False
-    trial_end: Optional[datetime] = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-
-class CreateSubscriptionRequest(BaseModel):
-    """Request to create a new subscription."""
-    workspace_id: str
-    user_id: str
-    email: str
-    plan_price_id: str
-    collection_method: PaymentCollectionMethod = PaymentCollectionMethod.CHARGE_AUTOMATICALLY
-    preferred_gateway: PaymentGateway = PaymentGateway.STRIPE
-    trial_days: Optional[int] = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-
-class CancelSubscriptionRequest(BaseModel):
-    """Request to cancel a subscription."""
-    workspace_id: str
-    cancel_immediately: bool = False
-
-
-class ChangeSubscriptionRequest(BaseModel):
-    """Request to change subscription plan."""
-    workspace_id: str
-    new_price_id: str
-    proration_behavior: str = "create_prorations"  # or "none", "always_invoice"
-
-
-# ─── Usage Schemas ───
-
-
 class UsageEventRequest(BaseModel):
     """A usage event to be metered."""
     workspace_id: str
@@ -118,77 +61,6 @@ class UsageByDayResponse(BaseModel):
     start_date: str
     end_date: str
     data: list[dict[str, Any]] = Field(default_factory=list)
-
-
-# ─── Checkout Schemas ───
-
-
-class CreateCheckoutRequest(BaseModel):
-    """Request to create a checkout session."""
-    workspace_id: str
-    user_id: str
-    email: str
-    price_id: str
-    success_url: str
-    cancel_url: str
-    gateway: PaymentGateway = PaymentGateway.STRIPE
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-
-class CheckoutResponse(BaseModel):
-    """Checkout session response."""
-    checkout_url: str
-    session_id: str
-    gateway: PaymentGateway
-
-
-class CreateRazorpayPaymentRequest(BaseModel):
-    """Request to create a Razorpay payment for an existing Stripe invoice."""
-    workspace_id: str
-    stripe_invoice_id: str
-
-
-class RazorpayPaymentResponse(BaseModel):
-    """Razorpay order details for frontend checkout."""
-    razorpay_order_id: str
-    amount: int  # in paise
-    currency: str
-    stripe_invoice_id: str
-
-
-# ─── Invoice Schemas ───
-
-
-class InvoiceResponse(BaseModel):
-    """Invoice details response."""
-    invoice_id: str
-    workspace_id: str
-    status: InvoiceStatus
-    amount_due: int
-    amount_paid: int
-    currency: str
-    due_date: Optional[datetime] = None
-    pdf_url: Optional[str] = None
-    hosted_url: Optional[str] = None
-    created_at: datetime
-
-
-class SendInvoiceRequest(BaseModel):
-    """Request to send an invoice to a customer."""
-    channel: str = "email"  # "email" or "whatsapp"
-    phone_number: Optional[str] = None
-
-
-class ReconcilePaymentRequest(BaseModel):
-    """Request to manually reconcile a payment against a Stripe invoice."""
-    workspace_id: str
-    stripe_invoice_id: str
-    amount: float
-    currency: str = "INR"
-    transfer_method: str  # "neft", "rtgs", "upi", "cheque"
-    bank_reference: str  # UTR number / transaction reference
-    transfer_date: datetime
-    notes: Optional[str] = None
 
 
 # ─── SQS Message Schemas ───

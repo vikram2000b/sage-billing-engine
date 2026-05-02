@@ -300,6 +300,8 @@ async def _project_subscription(
             "metadata": metadata,
         }
     )
+    if status in {"active", "trialing"}:
+        await billing_repository.expire_workspace_free_quotas(workspace_id)
     await billing_repository.update_quota_status(str(subscription["id"]), status)
 
     if create_quota_if_missing and not await billing_repository.quota_exists_for_period(str(subscription["id"]), period_start):

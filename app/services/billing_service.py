@@ -9,6 +9,7 @@ from typing import Any
 from app.clients.stripe_client import stripe_client
 from app.core.logging import logger, tracer
 from app.repositories.billing_repository import billing_repository
+from app.services.entitlement_service import get_entitlements
 from app.services.billing_usage_service import check_usage_eligibility
 
 
@@ -159,9 +160,8 @@ async def create_customer_session(workspace_id: str) -> dict[str, str]:
 
 
 async def check_entitlement(workspace_id: str, feature: str) -> dict[str, Any]:
-    summary = await get_billing_summary(workspace_id)
-    subscription = summary["subscription"]
-    if not subscription:
+    entitlements = await get_entitlements(workspace_id)
+    if not entitlements.has_active_subscription:
         return {
             "workspace_id": workspace_id,
             "feature": feature,
@@ -169,8 +169,7 @@ async def check_entitlement(workspace_id: str, feature: str) -> dict[str, Any]:
             "reason": "no_active_subscription",
         }
 
-    product_features = subscription.get("features") or []
-    has_access = feature in product_features if feature else True
+    has_access = feature in entitlements.features if feature else True
     return {
         "workspace_id": workspace_id,
         "feature": feature,

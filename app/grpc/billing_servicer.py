@@ -9,8 +9,11 @@ import grpc
 from google.protobuf.json_format import MessageToDict
 from google.protobuf.struct_pb2 import Struct
 from google.protobuf.timestamp_pb2 import Timestamp
+from pydantic import ValidationError
 
 from app.core.logging import logger
+from app.models.enums import UsageEventType
+from app.models.schemas import UsageEventRequest
 from app.services import billing_projection_service  # noqa: F401 - imported for service readiness
 from app.services.billing_service import (
     check_entitlement,
@@ -22,6 +25,7 @@ from app.services.billing_service import (
     get_plans,
 )
 from app.services.billing_usage_service import authorize_usage, record_usage
+from app.services.usage_service import publish_usage_event
 from sagepilot.billing import billing_pb2, billing_pb2_grpc
 
 
@@ -122,6 +126,32 @@ class BillingServicer(billing_pb2_grpc.BillingServiceServicer):
                 for item in decision.allocations
             ],
             stripe_meter_event_id=decision.stripe_meter_event_id,
+        )
+
+    async def RecordUsageAsync(self, request, context):
+        payload = _usage_event_from_proto(request.event)
+        try:
+            message_id = await publish_usage_event(
+                UsageEventRequest(
+                    workspace_id=payload["workspace_id"],
+                    event_type=UsageEventType(payload["event_type"]),
+                    value=payload["value"],
+                    idempotency_key=payload.get("idempotency_key") or None,
+                    metadata=payload.get("metadata") or {},
+                    timestamp=payload.get("occurred_at"),
+                )
+            )
+        except (ValidationError, ValueError) as exc:
+            await context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
+        except RuntimeError as exc:
+            await context.abort(grpc.StatusCode.FAILED_PRECONDITION, str(exc))
+        except Exception as exc:  # pragma: no cover - external failure path
+            logger.error("Billing RecordUsageAsync failed: %s", exc, exc_info=True)
+            await context.abort(grpc.StatusCode.INTERNAL, str(exc))
+
+        return billing_pb2.RecordUsageAsyncResponse(
+            status="queued",
+            message_id=message_id,
         )
 
 

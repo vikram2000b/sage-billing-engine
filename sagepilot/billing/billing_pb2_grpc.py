@@ -59,6 +59,11 @@ class BillingServiceStub(object):
                 request_serializer=sagepilot_dot_billing_dot_billing__pb2.RecordUsageSyncRequest.SerializeToString,
                 response_deserializer=sagepilot_dot_billing_dot_billing__pb2.RecordUsageSyncResponse.FromString,
                 _registered_method=True)
+        self.RecordUsageAsync = channel.unary_unary(
+                '/sagepilot.billing.BillingService/RecordUsageAsync',
+                request_serializer=sagepilot_dot_billing_dot_billing__pb2.RecordUsageAsyncRequest.SerializeToString,
+                response_deserializer=sagepilot_dot_billing_dot_billing__pb2.RecordUsageAsyncResponse.FromString,
+                _registered_method=True)
 
 
 class BillingServiceServicer(object):
@@ -118,6 +123,12 @@ class BillingServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def RecordUsageAsync(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_BillingServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -165,6 +176,11 @@ def add_BillingServiceServicer_to_server(servicer, server):
                     servicer.RecordUsageSync,
                     request_deserializer=sagepilot_dot_billing_dot_billing__pb2.RecordUsageSyncRequest.FromString,
                     response_serializer=sagepilot_dot_billing_dot_billing__pb2.RecordUsageSyncResponse.SerializeToString,
+            ),
+            'RecordUsageAsync': grpc.unary_unary_rpc_method_handler(
+                    servicer.RecordUsageAsync,
+                    request_deserializer=sagepilot_dot_billing_dot_billing__pb2.RecordUsageAsyncRequest.FromString,
+                    response_serializer=sagepilot_dot_billing_dot_billing__pb2.RecordUsageAsyncResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -410,6 +426,33 @@ class BillingService(object):
             '/sagepilot.billing.BillingService/RecordUsageSync',
             sagepilot_dot_billing_dot_billing__pb2.RecordUsageSyncRequest.SerializeToString,
             sagepilot_dot_billing_dot_billing__pb2.RecordUsageSyncResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RecordUsageAsync(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/sagepilot.billing.BillingService/RecordUsageAsync',
+            sagepilot_dot_billing_dot_billing__pb2.RecordUsageAsyncRequest.SerializeToString,
+            sagepilot_dot_billing_dot_billing__pb2.RecordUsageAsyncResponse.FromString,
             options,
             channel_credentials,
             insecure,
